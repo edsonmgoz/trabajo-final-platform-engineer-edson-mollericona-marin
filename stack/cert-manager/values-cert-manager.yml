@@ -1,0 +1,34 @@
+crds:
+  enabled: true
+
+replicaCount: 1
+
+namespace: "kube-system"
+
+nodeSelector:
+  node: system
+
+global:
+  nodeSelector:
+    node: system
+
+serviceAccount:
+  create: true
+
+securityContext:
+  fsGroup: 1001
+
+prometheus:
+  enabled: false
+
+webhook:
+  nodeSelector:
+    node: system
+
+cainjector:
+  nodeSelector:
+    node: system
+
+startupapicheck:
+  nodeSelector:
+    node: system
