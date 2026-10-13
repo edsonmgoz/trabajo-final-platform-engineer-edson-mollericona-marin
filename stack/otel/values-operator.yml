@@ -1,0 +1,31 @@
+replicaCount: 1
+
+role:
+  create: true
+
+clusterRole:
+  create: true
+
+nodeSelector:
+  node: system
+
+manager:
+  image:
+    repository: ghcr.io/open-telemetry/opentelemetry-operator/opentelemetry-operator
+  collectorImage:
+    repository: otel/opentelemetry-collector-contrib
+  serviceMonitor:
+    enabled: false
+
+admissionWebhooks:
+  pods:
+    failurePolicy: Ignore
+  namespaceSelector:
+    matchExpressions:
+      - key: kubernetes.io/metadata.name
+        operator: NotIn
+        values:
+          - kube-system
+          - o11y
+          - istio-operator
+          - istio-system
