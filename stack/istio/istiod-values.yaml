@@ -1,0 +1,36 @@
+nodeSelector:
+  node: system
+
+meshConfig:
+  accessLogFile: /dev/stdout
+  accessLogFormat: |
+    [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %RESPONSE_CODE% %RESPONSE_FLAGS% %RESPONSE_CODE_DETAILS% %CONNECTION_TERMINATION_DETAILS% "%UPSTREAM_TRANSPORT_FAILURE_REASON%" %BYTES_RECEIVED% %BYTES_SENT% %DURATION% %RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%" %UPSTREAM_CLUSTER% %UPSTREAM_LOCAL_ADDRESS% %DOWNSTREAM_LOCAL_ADDRESS% %DOWNSTREAM_REMOTE_ADDRESS% %REQUESTED_SERVER_NAME% %ROUTE_NAME% traceID=%REQ(X-B3-Traceid)%
+  enableTracing: true
+  extensionProviders:
+    - name: otel-traces
+      opentelemetry:
+        service: otel-collector.o11y.svc.cluster.local
+        port: 4317
+        grpc:
+          timeout: 10s
+    - name: otel-logs
+      envoyOtelAls:
+        service: otel-collector.o11y.svc.cluster.local
+        port: 4317
+        logFormat:
+          labels:
+            pod: "%ENVIRONMENT(POD_NAME)%"
+            namespace: "%ENVIRONMENT(POD_NAMESPACE)%"
+            cluster: "%ENVIRONMENT(ISTIO_META_CLUSTER_ID)%"
+            mesh: "%ENVIRONMENT(ISTIO_META_MESH_ID)%"
+  defaultConfig:
+    holdApplicationUntilProxyStarts: true
+    proxyMetadata:
+      ISTIO_META_DNS_CAPTURE: "true"
+      ISTIO_META_DNS_AUTO_ALLOCATE: "true"
+  outboundTrafficPolicy:
+    mode: REGISTRY_ONLY
+
+pilot:
+  env:
+    EXTERNAL_ISTIOD: false
