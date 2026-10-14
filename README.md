@@ -52,3 +52,119 @@ dev.edsonmm.products
 ├── exception       excepciones y manejador global
 └── config          configuración de OpenAPI
 ```
+
+## Contenedor
+
+El `Dockerfile` usa dos etapas: compila con `eclipse-temurin:25-jdk-noble` y ejecuta el JAR sobre `eclipse-temurin:25-jre-alpine` con el usuario sin privilegios `app` (uid y gid 1000). La imagen se etiqueta con la versión del servicio y nunca con `latest`.
+
+```bash
+docker build -t edsonmgoz/products-api:v0.1.0 .
+docker login
+docker push edsonmgoz/products-api:v0.1.0
+```
+
+Imagen publicada: [edsonmgoz/products-api](https://hub.docker.com/r/edsonmgoz/products-api/tags), etiqueta `v0.1.0` (linux/arm64).
+
+## Entorno local de plataforma
+
+Los archivos de configuración de cada componente están en `stack/` y los comandos se ejecutan desde la raíz del repositorio.
+
+Herramientas usadas en macOS:
+
+| Herramienta | Versión |
+|---|---|
+| Docker Desktop (engine) | 29.8.1 |
+| k3d | 5.9.0 (k3s v1.35.5) |
+| kubectl | 1.36.1 |
+| Helm | 4.3.0 |
+| istioctl | 1.29.2 |
+
+### 1. Cluster k3d
+
+```bash
+k3d cluster create --config stack/environment/k3d/base.yml
+```
+
+El cluster `local` tiene un server y dos agents. El agent 0 lleva la etiqueta `node=system` y aloja los componentes de plataforma; el agent 1 lleva `node=workloads` y aloja el gateway de entrada y, más adelante, la aplicación. Traefik está deshabilitado porque la entrada de tráfico la resuelve Istio. El balanceador de k3d publica en el host, entre otros, los puertos 80 y 443.
+
+Para detener y reanudar el cluster sin perder su estado:
+
+```bash
+k3d cluster stop local
+k3d cluster start local
+```
+
+### 2. cert-manager
+
+Emite los certificados de los webhooks del operador de OpenTelemetry.
+
+```bash
+helm repo add jetstack https://charts.jetstack.io && helm repo update
+helm upgrade cert-manager jetstack/cert-manager --install -n kube-system --version 1.20.2 -f stack/cert-manager/values-cert-manager.yml
+```
+
+### 3. OpenTelemetry Operator
+
+Gestiona los recursos `Instrumentation` y `OpenTelemetryCollector`, con los que se instrumentará el servicio sin tocar su código.
+
+```bash
+helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+helm repo update
+helm upgrade opentelemetry-operator open-telemetry/opentelemetry-operator --version 0.123.1 --install -n operators --create-namespace -f stack/otel/values-operator.yml
+```
+
+### 4. Istio en modo sidecar
+
+Primero se instalan los CRDs de Istio (`base`), luego los CRDs de Gateway API v1.5.1 (canal standard) y por último el control plane (`istiod`).
+
+```bash
+helm repo add istio https://istio-release.storage.googleapis.com/charts
+helm repo update
+helm upgrade --install istio-base istio/base -n istio-system --create-namespace --version 1.29.2 --wait -f stack/istio/istio-base-values.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
+helm upgrade --install istiod istio/istiod --namespace istio-system --version 1.29.2 --wait -f stack/istio/istiod-values.yaml
+```
+
+### 5. istioctl
+
+Se instala la misma versión que el control plane:
+
+```bash
+curl -sL https://istio.io/downloadIstioctl | ISTIO_VERSION=1.29.2 sh -
+echo 'export PATH="$HOME/.istioctl/bin:$PATH"' >> ~/.zshrc
+```
+
+### 6. Gateway de entrada
+
+`stack/istio/gateway-ingress.yaml` crea el Gateway `ingress-public` en `istio-system`, con un listener HTTP en el puerto 80 que acepta rutas de los namespaces `default` y `app`. El ConfigMap `ingress-gw-options` lleva los pods del gateway al nodo `workloads`.
+
+```bash
+kubectl apply -f stack/istio/gateway-ingress.yaml
+```
+
+### Resumen
+
+| Componente | Namespace | Versión | Configuración |
+|---|---|---|---|
+| cert-manager | `kube-system` | 1.20.2 | `stack/cert-manager/values-cert-manager.yml` |
+| OpenTelemetry Operator | `operators` | chart 0.123.1 (operador 0.159.0) | `stack/otel/values-operator.yml` |
+| Istio base | `istio-system` | 1.29.2 | `stack/istio/istio-base-values.yaml` |
+| Gateway API CRDs | (cluster) | v1.5.1 standard | manifiesto oficial |
+| istiod | `istio-system` | 1.29.2 | `stack/istio/istiod-values.yaml` |
+| Gateway `ingress-public` | `istio-system` | Gateway API v1 | `stack/istio/gateway-ingress.yaml` |
+
+### Comprobación
+
+```bash
+kubectl get nodes -L node
+kubectl get namespaces
+helm list -A
+kubectl get pods -A -o wide
+kubectl get gateway -n istio-system
+istioctl version
+curl -i localhost
+```
+
+## Evidencias
+
+Las capturas de cada paso están en [`evidencias/`](evidencias/README.md), ordenadas por módulo del trabajo.
