@@ -38,3 +38,7 @@ out/
 
 ### macOS ###
 .DS_Store
+
+### Gitea ###
+stack/gitea/.env
+stack/gitea/runner-data/

@@ -1,0 +1,18 @@
+log:
+  level: info
+
+runner:
+  file: /data/.runner
+  capacity: 1
+  env_file: /data/job.env
+  timeout: 3h
+  github_mirror: https://gitea.com
+
+container:
+  network: gitea-local
+  privileged: false
+  workdir_parent: /workspace
+
+cache:
+  enabled: true
+  dir: /data/cache

@@ -4,3 +4,7 @@
 .vscode
 .github
 build
+.gitea
+stack
+k8s
+evidencias
