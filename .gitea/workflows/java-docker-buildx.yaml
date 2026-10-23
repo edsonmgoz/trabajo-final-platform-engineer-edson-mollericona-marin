@@ -58,8 +58,11 @@ jobs:
 
       - name: Install Docker CLI
         run: |
-          apt-get update
-          apt-get install -y docker.io
+          if ! command -v docker >/dev/null 2>&1; then
+            apt-get update
+            apt-get install -y docker.io
+          fi
+          docker version
 
       - name: Login to Docker Hub
         if: ${{ github.event_name != 'pull_request' }}
