@@ -17,6 +17,14 @@ Cluster k3d y namespaces de plataforma.
 |---|---|---|
 | [01-imagen-docker-hub.png](02-aplicacion/01-imagen-docker-hub.png) | [Docker Hub](https://hub.docker.com/r/edsonmgoz/products-api/tags) | Imagen `edsonmgoz/products-api` publicada con la etiqueta versionada `v0.1.0` |
 
+## 03. Gitea y CI
+
+| Captura | Origen | Descripción |
+|---|---|---|
+| [01-repositorio-gitea.png](03-gitea-ci/01-repositorio-gitea.png) | `http://localhost:3000/acme/products-api` | Repositorio público `acme/products-api` en Gitea con la carpeta `.gitea/workflows`, la rama `master`, el tag `v0.1.1` y el último commit con su ejecución en verde |
+| [02-action-gitea.png](03-gitea-ci/02-action-gitea.png) | Gitea Actions, ejecución 3 | Workflow `java-docker-buildx.yaml` lanzado por el tag `v0.1.1`: pruebas, login, construcción y publicación de la imagen, todos los pasos en `Success` en 45 segundos |
+| [03-imagen-docker-hub.png](03-gitea-ci/03-imagen-docker-hub.png) | [Docker Hub](https://hub.docker.com/r/edsonmgoz/products-api/tags) | Imagen `edsonmgoz/products-api:v0.1.1` publicada por la ejecución anterior para `linux/amd64` y `linux/arm64` |
+
 ## 05. Service mesh
 
 | Captura | Comando | Descripción |

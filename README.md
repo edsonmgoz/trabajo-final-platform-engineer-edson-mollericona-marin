@@ -63,7 +63,7 @@ docker login
 docker push edsonmgoz/products-api:v0.1.0
 ```
 
-Imagen publicada: [edsonmgoz/products-api](https://hub.docker.com/r/edsonmgoz/products-api/tags), etiqueta `v0.1.0` (linux/arm64).
+Imagen publicada: [edsonmgoz/products-api](https://hub.docker.com/r/edsonmgoz/products-api/tags). La etiqueta `v0.1.0` (linux/arm64) se construyó en local; desde `v0.1.1` las imágenes las construye el pipeline de Gitea para linux/amd64 y linux/arm64.
 
 ## Entorno local de plataforma
 
@@ -164,6 +164,43 @@ kubectl get gateway -n istio-system
 istioctl version
 curl -i localhost
 ```
+
+## Gitea y CI
+
+Gitea y su runner corren fuera del cluster con Docker Compose (`stack/gitea/`). El contenedor de Gitea se conecta a la red `k3d-local` con el alias `gitea`, de modo que el cluster lo alcanza en `http://gitea:3000`; desde el host responde en `http://localhost:3000`.
+
+```bash
+docker compose -f stack/gitea/docker-compose.yaml up -d gitea
+```
+
+La instalación se completa en el asistente web, donde se crea el usuario administrador con su email.
+
+El runner se registra con el token que genera Gitea en Site Administration > Actions > Runners, guardado en `stack/gitea/.env`. Las credenciales de Docker Hub que usan los jobs (`DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` y `DOCKERHUB_NAMESPACE`) van en `stack/gitea/runner-data/job.env`, con un token de acceso de Docker Hub de lectura y escritura. Ninguno de los dos archivos se versiona.
+
+```bash
+docker compose -f stack/gitea/docker-compose.yaml --profile runner run --rm runner-register
+docker compose -f stack/gitea/docker-compose.yaml --profile runner up -d runner
+```
+
+El código se publica en el repositorio público `acme/products-api` de Gitea, añadido como segundo remote. GitHub sigue siendo el remote `origin`.
+
+```bash
+git remote add gitea http://localhost:3000/acme/products-api.git
+git push gitea master
+git tag -a v0.1.1 -m "Release v0.1.1"
+git push gitea v0.1.1
+git push origin v0.1.1
+```
+
+### Pipeline
+
+`.gitea/workflows/java-docker-buildx.yaml` se ejecuta en cada push a `master`, en cada tag `vX.Y.Z` y en los pull requests hacia `master`:
+
+1. Ejecuta las pruebas con Gradle sobre Temurin 25.
+2. Inicia sesión en Docker Hub y construye la imagen con Docker Buildx y QEMU para linux/amd64 y linux/arm64, con la etiqueta `buildcache` como caché de capas.
+3. Publica `master-<sha>` en los push a `master` y `vX.Y.Z` en los tags. Nunca publica `latest`. En los pull requests solo construye.
+
+La imagen del runner ya incluye Docker, por lo que el paso que instala la CLI solo actúa si no la encuentra.
 
 ## Despliegue en Kubernetes
 
