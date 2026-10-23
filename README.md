@@ -85,7 +85,7 @@ Herramientas usadas en macOS:
 k3d cluster create --config stack/environment/k3d/base.yml
 ```
 
-El cluster `local` tiene un server y dos agents. El agent 0 lleva la etiqueta `node=system` y aloja los componentes de plataforma; el agent 1 lleva `node=workloads` y aloja el gateway de entrada y, más adelante, la aplicación. Traefik está deshabilitado porque la entrada de tráfico la resuelve Istio. El balanceador de k3d publica en el host, entre otros, los puertos 80 y 443.
+El cluster `local` tiene un server y dos agents. El agent 0 lleva la etiqueta `node=system` y aloja los componentes de plataforma; el agent 1 lleva `node=workloads` y aloja el gateway de entrada y la aplicación. Traefik está deshabilitado porque la entrada de tráfico la resuelve Istio. El balanceador de k3d publica en el host, entre otros, los puertos 80 y 443.
 
 Para detener y reanudar el cluster sin perder su estado:
 
@@ -164,6 +164,38 @@ kubectl get gateway -n istio-system
 istioctl version
 curl -i localhost
 ```
+
+## Despliegue en Kubernetes
+
+Los manifiestos del servicio están en `k8s/`. `namespace.yaml` crea el namespace `app` con la etiqueta `istio-injection=enabled`, de modo que cada pod recibe el sidecar de Istio. `products-api.yaml` declara el ServiceAccount, el Deployment, el Service y el HTTPRoute.
+
+```bash
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/products-api.yaml
+kubectl -n app rollout status deployment/products-api --timeout=180s
+```
+
+| Recurso | Configuración |
+|---|---|
+| ServiceAccount `products-api` | Sin montaje automático del token de la API de Kubernetes |
+| Deployment `products-api` | Una réplica en el nodo `workloads` con la imagen `v0.1.0`. Se ejecuta con el usuario 1000, sin capabilities ni escalada de privilegios y con el sistema de archivos raíz en solo lectura; `/tmp` es un volumen `emptyDir`. Requests de 100m de CPU y 256Mi de memoria, límites de 1 CPU y 512Mi. Sondas de readiness y liveness sobre `/actuator/health/readiness` y `/actuator/health/liveness` |
+| Service `products-api` | ClusterIP en el puerto 8080 (`http`) |
+| HTTPRoute `products-api-route` | Enlaza el prefijo `/api/products` del Gateway `ingress-public` con el Service |
+
+Las etiquetas `owner`, `environment` y `app.kubernetes.io/name` identifican al equipo, el entorno y la aplicación, y la anotación `backstage.io/kubernetes-id` relaciona los recursos con su entidad en Backstage.
+
+El gateway solo publica `/api/products`; Actuator y Swagger quedan accesibles únicamente dentro del cluster. El servicio corre con una sola réplica porque la base H2 vive en la memoria de cada pod.
+
+### Comprobación
+
+```bash
+kubectl get pods,svc,httproute -n app -o wide
+curl -i http://localhost/api/products
+kubectl logs -n istio-system deploy/ingress-public-istio --tail=5
+kubectl logs -n app deploy/products-api -c istio-proxy --tail=5
+```
+
+El pod aparece con `2/2` contenedores listos: la aplicación y el sidecar `istio-proxy`. La respuesta llega con la cabecera `server: istio-envoy` y la misma petición queda registrada en el access log del gateway y en el del sidecar. El tráfico entre ambos viaja cifrado con mTLS.
 
 ## Evidencias
 
