@@ -152,6 +152,7 @@ kubectl apply -f stack/istio/gateway-ingress.yaml
 | Gateway API CRDs | (cluster) | v1.5.1 standard | manifiesto oficial |
 | istiod | `istio-system` | 1.29.2 | `stack/istio/istiod-values.yaml` |
 | Gateway `ingress-public` | `istio-system` | Gateway API v1 | `stack/istio/gateway-ingress.yaml` |
+| Argo CD | `argocd` | chart 9.5.11 (Argo CD v3.3.9) | `stack/argo/argocd-values.yaml` |
 
 ### Comprobación
 
@@ -212,10 +213,12 @@ kubectl apply -f k8s/products-api.yaml
 kubectl -n app rollout status deployment/products-api --timeout=180s
 ```
 
+Ese fue el despliegue inicial, con la imagen `v0.1.0`. Desde que Argo CD gestiona `k8s/`, los cambios llegan al cluster solo a través de Git (ver [GitOps con Argo CD](#gitops-con-argo-cd)).
+
 | Recurso | Configuración |
 |---|---|
 | ServiceAccount `products-api` | Sin montaje automático del token de la API de Kubernetes |
-| Deployment `products-api` | Una réplica en el nodo `workloads` con la imagen `v0.1.0`. Se ejecuta con el usuario 1000, sin capabilities ni escalada de privilegios y con el sistema de archivos raíz en solo lectura; `/tmp` es un volumen `emptyDir`. Requests de 100m de CPU y 256Mi de memoria, límites de 1 CPU y 512Mi. Sondas de readiness y liveness sobre `/actuator/health/readiness` y `/actuator/health/liveness` |
+| Deployment `products-api` | Una réplica en el nodo `workloads` con la imagen `v0.1.1`. Se ejecuta con el usuario 1000, sin capabilities ni escalada de privilegios y con el sistema de archivos raíz en solo lectura; `/tmp` es un volumen `emptyDir`. Requests de 100m de CPU y 256Mi de memoria, límites de 1 CPU y 512Mi. Sondas de readiness y liveness sobre `/actuator/health/readiness` y `/actuator/health/liveness` |
 | Service `products-api` | ClusterIP en el puerto 8080 (`http`) |
 | HTTPRoute `products-api-route` | Enlaza el prefijo `/api/products` del Gateway `ingress-public` con el Service |
 
@@ -233,6 +236,70 @@ kubectl logs -n app deploy/products-api -c istio-proxy --tail=5
 ```
 
 El pod aparece con `2/2` contenedores listos: la aplicación y el sidecar `istio-proxy`. La respuesta llega con la cabecera `server: istio-envoy` y la misma petición queda registrada en el access log del gateway y en el del sidecar. El tráfico entre ambos viaja cifrado con mTLS.
+
+## GitOps con Argo CD
+
+Argo CD se instala con Helm en el namespace `argocd` y todos sus componentes corren en el nodo `system`. `stack/argo/argocd-values.yaml` espacia las consultas al repositorio (cada 180 s, con hasta 60 s de variación), calcula las diferencias en el servidor, sigue los recursos por anotación, excluye los informes de Kyverno y sirve la interfaz por HTTP.
+
+```bash
+helm repo add argo https://argoproj.github.io/argo-helm
+helm repo update
+helm upgrade --install argocd argo/argo-cd -n argocd --create-namespace --version 9.5.11 --wait -f stack/argo/argocd-values.yaml
+```
+
+La interfaz queda en `http://localhost:8080` con un port-forward. Se entra con el usuario `admin` y la contraseña inicial que genera la instalación.
+
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
+kubectl -n argocd port-forward svc/argocd-server 8080:80
+```
+
+Argo CD lee el repositorio desde Gitea, en `http://gitea:3000/acme/products-api.git`. `stack/argo/repository-secret.yaml` lo registra; como el repositorio es público, el Secret no lleva credenciales.
+
+```bash
+kubectl apply -f stack/argo/repository-secret.yaml
+```
+
+### Aplicaciones
+
+```
+gitops/
+├── k8s-local-apps.yaml                            Application raíz
+└── clusters/local/
+    ├── project-app.yaml                           AppProject products
+    └── apps/project-products/products-api.yaml    Application del servicio
+```
+
+Las aplicaciones siguen el patrón app of apps. `k8s-local-apps` recorre `gitops/clusters/local` y crea primero el AppProject `products` (sync-wave `-1`) y después la Application `products-api` (sync-wave `0`). El proyecto solo admite este repositorio como origen y el namespace `app` como destino.
+
+`products-api` despliega la carpeta `k8s/` de la rama `master` con sincronización automática, `prune` y `selfHeal`: lo que se elimina de Git se elimina del cluster y los cambios manuales se revierten. El HTTPRoute lleva la sync-wave `1` para aplicarse después del Deployment y el Service.
+
+La Application raíz es lo único que se aplica a mano, una vez publicada la carpeta `gitops/` en Gitea. Argo CD adoptó los recursos que ya existían en `app` sin recrearlos.
+
+```bash
+kubectl apply -f gitops/k8s-local-apps.yaml
+```
+
+### Cambios por Git
+
+Para desplegar `v0.1.1`, la imagen que el pipeline construyó a partir del tag, se cambió la etiqueta en `k8s/products-api.yaml` y se publicó el commit en GitHub y en Gitea, sin ningún comando sobre el cluster:
+
+```bash
+git push gitea master
+```
+
+Argo CD detectó el commit `d3d9f62` en su siguiente consulta, tres minutos y medio después del push, y lo sincronizó por su cuenta. El Deployment creó un ReplicaSet con `v0.1.1` y retiró el de `v0.1.0` cuando el pod nuevo estuvo listo.
+
+### Comprobación
+
+```bash
+kubectl -n argocd get applications
+kubectl -n app get rs -o wide
+kubectl -n app logs deploy/products-api -c server | grep "Starting ProductsApiApplication"
+curl -i http://localhost/api/products
+```
+
+Las dos aplicaciones aparecen como `Synced` y `Healthy`, el ReplicaSet activo usa `v0.1.1` y el log de arranque muestra `Starting ProductsApiApplication v0.1.1`.
 
 ## Evidencias
 

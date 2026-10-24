@@ -25,6 +25,14 @@ Cluster k3d y namespaces de plataforma.
 | [02-action-gitea.png](03-gitea-ci/02-action-gitea.png) | Gitea Actions, ejecución 3 | Workflow `java-docker-buildx.yaml` lanzado por el tag `v0.1.1`: pruebas, login, construcción y publicación de la imagen, todos los pasos en `Success` en 45 segundos |
 | [03-imagen-docker-hub.png](03-gitea-ci/03-imagen-docker-hub.png) | [Docker Hub](https://hub.docker.com/r/edsonmgoz/products-api/tags) | Imagen `edsonmgoz/products-api:v0.1.1` publicada por la ejecución anterior para `linux/amd64` y `linux/arm64` |
 
+## 04. GitOps
+
+| Captura | Origen | Descripción |
+|---|---|---|
+| [01-argocd-aplicaciones.png](04-gitops/01-argocd-aplicaciones.png) | Argo CD, `http://localhost:8080/applications` | `k8s-local-apps` (proyecto `default`, ruta `gitops/clusters/local`) y `products-api` (proyecto `products`, ruta `k8s`, namespace `app`) en `Synced` y `Healthy`, ambas sobre la rama `master` de `http://gitea:3000/acme/products-api.git` |
+| [02-argocd-products-api.png](04-gitops/02-argocd-products-api.png) | Argo CD, aplicación `products-api` | Sincronización automática del commit `318cd3c` y árbol de recursos gestionados: Namespace `app`, Service con su EndpointSlice, ServiceAccount, Deployment con su ReplicaSet y el pod `2/2`, y HTTPRoute |
+| [03-sync-v0.1.1.png](04-gitops/03-sync-v0.1.1.png) | Argo CD, aplicación `products-api` | Sincronización automática del commit `d3d9f62`, que cambia la imagen a `v0.1.1`: el Deployment pasa a la revisión 2 con un ReplicaSet nuevo y su pod `2/2`, y el ReplicaSet de `v0.1.0` queda sin réplicas |
+
 ## 05. Service mesh
 
 | Captura | Comando | Descripción |
