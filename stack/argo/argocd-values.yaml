@@ -1,0 +1,58 @@
+global:
+  nodeSelector:
+    node: system
+configs:
+  cm:
+    timeout.reconciliation: 180s
+    timeout.reconciliation.jitter: 60s
+    controller.diff.server.side: "true"
+    application.resourceTrackingMethod: annotation
+    resource.exclusions: |
+      - apiGroups:
+          - kyverno.io
+          - reports.kyverno.io
+          - wgpolicyk8s.io
+        kinds:
+          - ClusterPolicyReport
+          - PolicyReport
+          - EphemeralReport
+          - ClusterEphemeralReport
+          - UpdateRequest
+        clusters:
+          - '*'
+  params:
+    server.insecure: "true"
+    controller.status.processors: "5"
+    controller.operation.processors: "2"
+controller:
+  nodeSelector:
+    node: system
+  metrics:
+    enabled: false
+    serviceMonitor:
+      enabled: false
+      interval: 60s
+server:
+  nodeSelector:
+    node: system
+  metrics:
+    enabled: false
+    serviceMonitor:
+      enabled: false
+      interval: 60s
+repoServer:
+  nodeSelector:
+    node: system
+  metrics:
+    enabled: false
+    serviceMonitor:
+      enabled: false
+      interval: 60s
+applicationSet:
+  nodeSelector:
+    node: system
+  metrics:
+    enabled: false
+    serviceMonitor:
+      enabled: false
+      interval: 60s

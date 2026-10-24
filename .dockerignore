@@ -7,4 +7,5 @@ build
 .gitea
 stack
 k8s
+gitops
 evidencias

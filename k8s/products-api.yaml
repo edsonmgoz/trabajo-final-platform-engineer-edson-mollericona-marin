@@ -117,6 +117,7 @@ metadata:
   labels:
     backstage.io/kubernetes-id: products-api
   annotations:
+    argocd.argoproj.io/sync-wave: "1"
     backstage.io/kubernetes-id: products-api
 spec:
   parentRefs:

@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: k8s-local-apps
+  namespace: argocd
+  annotations:
+    backstage.io/kubernetes-id: k8s-local-apps
+  labels:
+    backstage.io/kubernetes-id: k8s-local-apps
+spec:
+  project: default
+  source:
+    repoURL: http://gitea:3000/acme/products-api.git
+    targetRevision: master
+    path: gitops/clusters/local
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

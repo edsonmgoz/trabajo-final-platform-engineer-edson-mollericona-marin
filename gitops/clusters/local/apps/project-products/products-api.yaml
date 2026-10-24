@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: products-api
+  namespace: argocd
+  labels:
+    backstage.io/kubernetes-id: products-api
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    course.platform/source-repo: http://localhost:3000/acme/products-api.git
+    backstage.io/kubernetes-id: products-api
+spec:
+  project: products
+  source:
+    repoURL: http://gitea:3000/acme/products-api.git
+    targetRevision: master
+    path: k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: app
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
