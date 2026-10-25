@@ -153,6 +153,10 @@ kubectl apply -f stack/istio/gateway-ingress.yaml
 | istiod | `istio-system` | 1.29.2 | `stack/istio/istiod-values.yaml` |
 | Gateway `ingress-public` | `istio-system` | Gateway API v1 | `stack/istio/gateway-ingress.yaml` |
 | Argo CD | `argocd` | chart 9.5.11 (Argo CD v3.3.9) | `stack/argo/argocd-values.yaml` |
+| CRDs de Prometheus Operator | `monitoring` | chart 32.0.2 (v0.94.2) | valores por defecto |
+| Prometheus | `prometheus` | chart 29.6.0 (Prometheus v3.11.3) | `stack/prometheus/values-server.yaml` |
+| Collector de OpenTelemetry | `o11y` | otelcol-contrib 0.159.0 | `stack/otel/otel-collector.yaml` |
+| k8s-monitoring | `grafana-agent` | chart 4.0.3 (Alloy v1.15.0) | `stack/k8s-monitoring/values.yaml` |
 
 ### Comprobación
 
@@ -300,6 +304,105 @@ curl -i http://localhost/api/products
 ```
 
 Las dos aplicaciones aparecen como `Synced` y `Healthy`, el ReplicaSet activo usa `v0.1.1` y el log de arranque muestra `Starting ProductsApiApplication v0.1.1`.
+
+## Observabilidad
+
+Un collector de OpenTelemetry en el namespace `o11y` recibe por OTLP las métricas, trazas y logs del cluster y escribe las métricas en Prometheus. Todo corre en local, sin servicios externos.
+
+```
+products-api (agente Java)   ── OTLP 4318 ──┐
+gateway y sidecars de Istio  ── OTLP 4317 ──┼──> collector otel (o11y) ── remote write ──> Prometheus (prometheus)
+Alloy (k8s-monitoring)       ── OTLP 4318 ──┘
+```
+
+### Prometheus
+
+Prometheus no hace scrapes propios: recibe las métricas por remote write desde el collector (`web.enable-remote-write-receiver`). Corre como StatefulSet en el nodo `system`, con un volumen de 20Gi en `local-path` y 30 días de retención. Los CRDs de Prometheus Operator se instalan antes porque Alloy descubre los `ServiceMonitor` y `PodMonitor` del cluster.
+
+```bash
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+helm upgrade --install prometheus-operator-crds prometheus-community/prometheus-operator-crds -n monitoring --create-namespace --version 32.0.2
+helm upgrade --install prometheus prometheus-community/prometheus -n prometheus --create-namespace --version 29.6.0 -f stack/prometheus/values-server.yaml
+```
+
+### Collector
+
+```bash
+kubectl create ns o11y
+kubectl apply -f stack/otel/otel-collector.yaml
+```
+
+El operador de OpenTelemetry crea el StatefulSet y el Service `otel-collector.o11y`, con los puertos 4317 (gRPC) y 4318 (HTTP). Sus pipelines:
+
+| Pipeline | Origen | Destino |
+|---|---|---|
+| `metrics/infra` | métricas sin SDK (Alloy) | Prometheus |
+| `metrics/applications` | métricas con `telemetry.sdk.language` (agente Java), con `k8s.cluster.name` y `deployment.environment` en `local` | Prometheus |
+| `traces` | spans del agente y de Istio | conectores `spanmetrics` y `servicegraph` |
+| `metrics/spanmetrics_servicegraph` | los dos conectores: llamadas, latencia y dependencias (`traces_span_metrics_*`, `traces_service_graph_*`) | Prometheus |
+| `logs` | logs del agente y de Alloy | exporter `debug` |
+
+### Trazas de Istio
+
+```bash
+kubectl apply -f stack/istio/telemetry.yaml
+```
+
+La `Telemetry` `mesh` activa el proveedor `otel-traces`, ya definido en `stack/istio/istiod-values.yaml`, con un muestreo del 100 %: el gateway y los sidecars envían un span por petición al collector.
+
+### Métricas de infraestructura
+
+```bash
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
+helm upgrade --install k8s-monitoring grafana/k8s-monitoring -n grafana-agent --create-namespace --version 4.0.3 -f stack/k8s-monitoring/values.yaml --timeout 15m
+```
+
+Alloy recoge las métricas del kubelet y de cAdvisor, de los nodos, de kube-state-metrics y de Istio (sidecars e istiod), además de los logs de los pods y los eventos del cluster, y lo envía todo al collector. Entre esas métricas están las que consulta la card de métricas de Backstage: `istio_requests_total`, `istio_request_duration_milliseconds_bucket`, `container_cpu_usage_seconds_total` y `kube_pod_container_resource_requests`.
+
+El hook `post-install` del chart descarga una imagen de `ghcr.io` que tardó más que los 5 minutos que Helm espera por defecto; de ahí el `--timeout 15m`. Los values excluyen el namespace `o11y` de la recogida de logs, porque el exporter `debug` imprime cada registro que recibe y, sin la exclusión, esas líneas volvían al collector en bucle.
+
+### Instrumentación de products-api
+
+```bash
+kubectl apply -f stack/otel/autoinstrumentation.yaml
+```
+
+La `Instrumentation` del namespace `app` define el agente Java 2.27.0, el envío OTLP en `http/protobuf` al collector y el muestreo `parentbased_always_on`. La plantilla del pod en `k8s/products-api.yaml` lleva tres anotaciones:
+
+| Anotación | Efecto |
+|---|---|
+| `instrumentation.opentelemetry.io/inject-java: "true"` | el operador inyecta el agente al crear el pod |
+| `instrumentation.opentelemetry.io/container-names: server` | solo en el contenedor de la aplicación |
+| `traffic.sidecar.istio.io/excludeOutboundPorts: "4317,4318"` | el tráfico hacia el collector no pasa por el sidecar |
+
+Las anotaciones llegaron al cluster por Git, como cualquier cambio de `k8s/`: Argo CD sincronizó el commit y el pod nuevo arrancó con el init container `opentelemetry-auto-instrumentation-java`. El agente envía métricas HTTP, de la JVM y del pool JDBC, trazas (incluidas las consultas a H2) y los logs de Spring.
+
+### Prueba de carga
+
+```bash
+brew install siege
+siege -c 15 -t 60S http://localhost/api/products
+```
+
+La prueba hizo 32.724 peticiones, todas con respuesta 200. La misma cifra aparece en las métricas HTTP del agente, en `istio_requests_total` y en las métricas de trazas del gateway, del sidecar y del agente.
+
+### Comprobación
+
+```bash
+kubectl -n prometheus port-forward svc/prometheus-server 9090:80
+```
+
+Consultas en `http://localhost:9090`:
+
+```promql
+sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="products-api"}[5m]))
+sum by (destination_service_name) (rate(istio_requests_total{reporter="destination", destination_service_name=~"products-api.*"}[5m]))
+sum by (span_name) (rate(traces_span_metrics_calls_total{service_name="products-api", span_name!~".*actuator.*"}[5m]))
+```
+
+Las métricas del agente y las de trazas llegan cada 60 segundos, así que las consultas usan una ventana de 5 minutos.
 
 ## Evidencias
 
