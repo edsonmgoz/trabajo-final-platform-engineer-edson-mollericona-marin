@@ -1,0 +1,212 @@
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: otel
+  namespace: o11y
+spec:
+  upgradeStrategy: automatic
+  mode: statefulset
+  imagePullPolicy: IfNotPresent
+  args:
+    feature-gates: exporter.prometheusremotewritexporter.RetryOn429,exporter.prometheusremotewritexporter.EnableMultipleWorkers
+  replicas: 1
+  observability:
+    metrics:
+      enableMetrics: true
+  config:
+    connectors:
+      servicegraph:
+        latency_histogram_buckets: [30ms, 100ms, 500ms, 1s, 2s, 3s, 5s, 8s, 10s, 15s, 30s]
+        dimensions:
+          - service.namespace
+          - deployment.environment
+          - k8s.cluster.name
+          - k8s.namespace.name
+        virtual_node_peer_attributes:
+          - peer.service
+          - db.namespace
+          - db.name
+          - db.system
+          - db.system.name
+          - messaging.system
+          - db.url
+          - server.address
+          - net.peer.name
+        virtual_node_extra_label: true
+        metrics_flush_interval: 60s
+        store:
+          ttl: 5m
+          max_items: 100000
+      spanmetrics:
+        namespace: traces.span.metrics
+        histogram:
+          unit: s
+          explicit:
+            buckets: [30ms, 100ms, 500ms, 1s, 2s, 3s, 5s, 8s, 10s, 15s, 30s]
+        dimensions:
+          - name: service.namespace
+          - name: deployment.environment
+          - name: k8s.cluster.name
+          - name: k8s.namespace.name
+          - name: k8s.pod.name
+        exemplars:
+          enabled: true
+        exclude_dimensions: []
+        resource_metrics_cache_size: 50000
+        aggregation_cardinality_limit: 10000
+        aggregation_temporality: "AGGREGATION_TEMPORALITY_CUMULATIVE"
+        metrics_flush_interval: 60s
+        metrics_expiration: 5m
+        events:
+          enabled: false
+          dimensions:
+            - name: exception.type
+            - name: exception.message
+        add_resource_attributes: true
+        resource_metrics_key_attributes:
+          - service.name
+          - service.namespace
+          - service.instance.id
+          - deployment.environment
+          - k8s.cluster.name
+          - telemetry.sdk.language
+          - telemetry.sdk.name
+    extensions:
+      pprof: {}
+      zpages: {}
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+    processors:
+      resource/entity:
+        attributes:
+          - key: k8s.cluster.name
+            value: local
+            action: upsert
+          - key: deployment.environment
+            value: local
+            action: upsert
+      filter/metrics_infra:
+        error_mode: ignore
+        metrics:
+          datapoint:
+            - resource.attributes["telemetry.sdk.language"] != nil
+      filter/metrics_applications:
+        error_mode: ignore
+        metrics:
+          datapoint:
+            - resource.attributes["telemetry.sdk.language"] == nil
+      batch/metrics:
+        send_batch_size: 2000
+        timeout: 5s
+      batch/traces:
+        send_batch_size: 2000
+        send_batch_max_size: 3000
+        timeout: 5s
+      batch/logs:
+        send_batch_size: 2000
+        send_batch_max_size: 3000
+        timeout: 5s
+    exporters:
+      debug:
+        verbosity: detailed
+        use_internal_logger: false
+      prometheusremotewrite:
+        endpoint: "http://prometheus-server.prometheus.svc.cluster.local/api/v1/write"
+        send_metadata: false
+        translation_strategy: UnderscoreEscapingWithSuffixes
+        max_batch_request_parallelism: 1
+        max_batch_size_bytes: 5000000
+        remote_write_queue:
+          enabled: true
+          num_consumers: 1
+          queue_size: 10000
+        resource_to_telemetry_conversion:
+          enabled: true
+        target_info:
+          enabled: false
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 300s
+      prometheusremotewrite/target_info:
+        endpoint: "http://prometheus-server.prometheus.svc.cluster.local/api/v1/write"
+        send_metadata: false
+        translation_strategy: UnderscoreEscapingWithSuffixes
+        max_batch_request_parallelism: 1
+        max_batch_size_bytes: 5000000
+        remote_write_queue:
+          enabled: true
+          num_consumers: 1
+          queue_size: 10000
+        resource_to_telemetry_conversion:
+          enabled: false
+        target_info:
+          enabled: true
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 300s
+    service:
+      telemetry:
+        logs:
+          level: "info"
+        metrics:
+          level: detailed
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: '0.0.0.0'
+                    port: 8888
+      extensions: [pprof, zpages]
+      pipelines:
+        metrics/infra:
+          receivers:
+            - otlp
+          processors:
+            - filter/metrics_infra
+            - batch/metrics
+          exporters:
+            - prometheusremotewrite
+        metrics/applications:
+          receivers:
+            - otlp
+          processors:
+            - filter/metrics_applications
+            - resource/entity
+            - batch/metrics
+          exporters:
+            - prometheusremotewrite
+        metrics/spanmetrics_servicegraph:
+          receivers:
+            - spanmetrics
+            - servicegraph
+          processors:
+            - resource/entity
+            - batch/metrics
+          exporters:
+            - prometheusremotewrite/target_info
+        traces:
+          receivers:
+            - otlp
+          processors:
+            - resource/entity
+            - batch/traces
+          exporters:
+            - spanmetrics
+            - servicegraph
+        logs:
+          receivers:
+            - otlp
+          processors:
+            - resource/entity
+            - batch/logs
+          exporters:
+            - debug

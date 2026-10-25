@@ -1,0 +1,62 @@
+server:
+  name: server
+  defaultFlagsOverride: []
+  extraFlags:
+    - web.enable-lifecycle
+    - enable-feature=exemplar-storage
+    - web.enable-remote-write-receiver
+    - enable-feature=exemplar-storage,native-histograms,otlp-deltatocumulative
+  global:
+    scrape_interval: 1m
+    scrape_timeout: 15s
+    evaluation_interval: 1m
+  tsdb:
+    out_of_order_time_window: 8h
+  otlp: {}
+  exemplars:
+    max_exemplars: 100000
+  nodeSelector:
+    node: system
+  persistentVolume:
+    enabled: true
+    accessModes:
+      - ReadWriteOnce
+    size: 20Gi
+    storageClass: "local-path"
+  replicaCount: 1
+  statefulSet:
+    enabled: true
+  retention: "30d"
+scrapeConfigs:
+  prometheus:
+    enabled: false
+    job_name: ""
+    static_configs:
+      - targets:
+          - localhost:9090
+  kubernetes-api-servers:
+    enabled: false
+  kubernetes-nodes:
+    enabled: false
+  kubernetes-nodes-cadvisor:
+    enabled: false
+  kubernetes-service-endpoints:
+    enabled: false
+  kubernetes-service-endpoints-slow:
+    enabled: false
+  prometheus-pushgateway:
+    enabled: false
+  kubernetes-services:
+    enabled: false
+  kubernetes-pods:
+    enabled: false
+  kubernetes-pods-slow:
+    enabled: false
+alertmanager:
+  enabled: false
+kube-state-metrics:
+  enabled: false
+prometheus-node-exporter:
+  enabled: false
+prometheus-pushgateway:
+  enabled: false
