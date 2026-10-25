@@ -37,6 +37,9 @@ spec:
         environment: dev
         backstage.io/kubernetes-id: products-api
       annotations:
+        instrumentation.opentelemetry.io/inject-java: "true"
+        instrumentation.opentelemetry.io/container-names: server
+        traffic.sidecar.istio.io/excludeOutboundPorts: "4317,4318"
         backstage.io/kubernetes-id: products-api
     spec:
       serviceAccountName: products-api
