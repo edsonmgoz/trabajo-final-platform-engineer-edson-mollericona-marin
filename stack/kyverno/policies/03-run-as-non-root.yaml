@@ -1,0 +1,42 @@
+apiVersion: kyverno.io/v1
+kind: Policy
+metadata:
+  name: require-run-as-non-root
+  namespace: app
+  annotations:
+    policies.kyverno.io/title: Require runAsNonRoot
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+
+  - name: require-pod-run-as-non-root
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          - argoproj.io/v1alpha1/Rollout
+    validate:
+      message: "El Pod debe heredar runAsNonRoot=true sin overrides false, o declararlo en todos sus containers e initContainers."
+      anyPattern:
+      - spec:
+          template:
+            spec:
+              securityContext:
+                runAsNonRoot: true
+              containers:
+              - "=(securityContext)":
+                  "=(runAsNonRoot)": true
+              "=(initContainers)":
+              - "=(securityContext)":
+                  "=(runAsNonRoot)": true
+      - spec:
+          template:
+            spec:
+              containers:
+              - securityContext:
+                  runAsNonRoot: true
+              "=(initContainers)":
+              - securityContext:
+                  runAsNonRoot: true

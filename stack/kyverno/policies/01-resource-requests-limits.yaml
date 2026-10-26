@@ -1,0 +1,36 @@
+apiVersion: kyverno.io/v1
+kind: Policy
+metadata:
+  name: require-container-resources
+  namespace: app
+  annotations:
+    policies.kyverno.io/title: Require resource requests and limits
+    policies.kyverno.io/category: Resource Management
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+
+  - name: require-resources-on-containers
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          - argoproj.io/v1alpha1/Rollout
+    validate:
+      message: "Cada contenedor e initContainer debe declarar requests (cpu/memory) y limits de memory."
+      foreach:
+      - list: "request.object.spec.template.spec.[initContainers, containers][]"
+        deny:
+          conditions:
+            any:
+            - key: "{{ element.resources.requests.cpu || '' }}"
+              operator: Equals
+              value: ""
+            - key: "{{ element.resources.requests.memory || '' }}"
+              operator: Equals
+              value: ""
+            - key: "{{ element.resources.limits.memory || '' }}"
+              operator: Equals
+              value: ""

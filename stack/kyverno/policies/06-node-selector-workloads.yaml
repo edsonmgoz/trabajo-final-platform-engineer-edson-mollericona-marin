@@ -1,0 +1,27 @@
+apiVersion: kyverno.io/v1
+kind: Policy
+metadata:
+  name: require-workloads-node-selector
+  namespace: app
+  annotations:
+    policies.kyverno.io/title: Require workloads nodeSelector
+    policies.kyverno.io/category: MitoCode Cloud Native
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+
+  - name: require-node-workloads
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+    validate:
+      message: "Los workloads del namespace app deben declarar nodeSelector.node=workloads."
+      pattern:
+        spec:
+          template:
+            spec:
+              nodeSelector:
+                node: workloads

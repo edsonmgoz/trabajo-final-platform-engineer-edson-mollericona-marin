@@ -1,0 +1,48 @@
+apiVersion: kyverno.io/v1
+kind: Policy
+metadata:
+  name: restrict-images-and-latest-tag
+  namespace: app
+  annotations:
+    policies.kyverno.io/title: Restrict image registry and latest tag
+    policies.kyverno.io/category: MitoCode Cloud Native
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+
+  - name: allow-only-approved-registries
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+    validate:
+      message: "Las imágenes deben venir de us-central1-docker.pkg.dev o del namespace edsonmgoz en Docker Hub."
+      foreach:
+      - list: "request.object.spec.template.spec.[initContainers, containers][]"
+        deny:
+          conditions:
+            all:
+            - key: "{{ regex_match('^(us-central1-docker[.]pkg[.]dev|((docker[.]io|index[.]docker[.]io)/)?edsonmgoz)/.+', element.image) }}"
+              operator: Equals
+              value: false
+  - name: require-explicit-non-latest-tag-or-digest
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+    validate:
+      message: "Cada imagen debe declarar un tag distinto de latest o un digest inmutable."
+      foreach:
+      - list: "request.object.spec.template.spec.[initContainers, containers][]"
+        deny:
+          conditions:
+            any:
+            - key: "{{ regex_match('(^|.*/)[^/:@]+$', element.image) }}"
+              operator: Equals
+              value: true
+            - key: "{{ regex_match('(^|.*/)[^/:@]+:latest$', element.image) }}"
+              operator: Equals
+              value: true

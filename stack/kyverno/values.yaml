@@ -1,0 +1,32 @@
+features:
+  backgroundScan:
+    enabled: true
+    backgroundScanWorkers: 1
+    backgroundScanInterval: 4h
+
+admissionController:
+  replicas: 1
+  nodeSelector:
+    node: system
+  metricsService:
+    create: true
+  serviceMonitor:
+    enabled: true
+backgroundController:
+  replicas: 1
+  nodeSelector:
+    node: system
+  serviceMonitor:
+    enabled: true
+cleanupController:
+  replicas: 1
+  nodeSelector:
+    node: system
+  serviceMonitor:
+    enabled: true
+reportsController:
+  replicas: 1
+  nodeSelector:
+    node: system
+  serviceMonitor:
+    enabled: true

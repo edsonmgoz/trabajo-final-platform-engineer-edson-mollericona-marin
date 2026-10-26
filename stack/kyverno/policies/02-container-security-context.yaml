@@ -1,0 +1,52 @@
+apiVersion: kyverno.io/v1
+kind: Policy
+metadata:
+  name: restrict-container-security-context
+  namespace: app
+  annotations:
+    policies.kyverno.io/title: Restrict container security context
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+
+  - name: disallow-privileged-and-escalation
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          - argoproj.io/v1alpha1/Rollout
+    validate:
+      message: "No se permiten contenedores privileged, con privilege escalation o filesystem writable."
+      foreach:
+      - list: "request.object.spec.template.spec.[initContainers, containers][]"
+        deny:
+          conditions:
+            any:
+            - key: "{{ element.securityContext.privileged || false }}"
+              operator: Equals
+              value: true
+            - key: "{{ element.securityContext.allowPrivilegeEscalation }}"
+              operator: NotEquals
+              value: false
+            - key: "{{ element.securityContext.readOnlyRootFilesystem || false }}"
+              operator: Equals
+              value: false
+  - name: require-drop-all-capabilities
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          - argoproj.io/v1alpha1/Rollout
+    validate:
+      message: "Cada container e initContainer debe declarar capabilities.drop: [ALL]."
+      foreach:
+      - list: "request.object.spec.template.spec.[initContainers, containers][]"
+        deny:
+          conditions:
+            all:
+            - key: ALL
+              operator: AnyNotIn
+              value: "{{ element.securityContext.capabilities.drop[].to_upper(@) || `[]` }}"

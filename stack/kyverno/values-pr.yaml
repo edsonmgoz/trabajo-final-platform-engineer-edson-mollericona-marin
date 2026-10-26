@@ -1,0 +1,20 @@
+nodeSelector:
+  node: system
+
+ui:
+  enabled: true
+  plugins:
+    kyverno: true
+  nodeSelector:
+    node: system
+
+kyvernoPlugin:
+  enabled: true
+  nodeSelector:
+    node: system
+
+plugin:
+  kyverno:
+    enabled: true
+    nodeSelector:
+      node: system

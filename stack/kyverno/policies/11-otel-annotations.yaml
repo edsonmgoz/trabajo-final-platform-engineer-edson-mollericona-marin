@@ -1,0 +1,53 @@
+apiVersion: kyverno.io/v1
+kind: Policy
+metadata:
+  name: require-otel-annotations
+  namespace: app
+  annotations:
+    policies.kyverno.io/title: Require OpenTelemetry container names
+    policies.kyverno.io/category: MitoCode Cloud Native
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+
+  - name: require-container-names-for-otel-injection
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+    preconditions:
+      any:
+      - key: "{{ request.object.spec.template.metadata.annotations.\"instrumentation.opentelemetry.io/inject-java\" || 'false' }}"
+        operator: NotEquals
+        value: "false"
+      - key: "{{ request.object.spec.template.metadata.annotations.\"instrumentation.opentelemetry.io/inject-nodejs\" || 'false' }}"
+        operator: NotEquals
+        value: "false"
+      - key: "{{ request.object.spec.template.metadata.annotations.\"instrumentation.opentelemetry.io/inject-python\" || 'false' }}"
+        operator: NotEquals
+        value: "false"
+      - key: "{{ request.object.spec.template.metadata.annotations.\"instrumentation.opentelemetry.io/inject-dotnet\" || 'false' }}"
+        operator: NotEquals
+        value: "false"
+      - key: "{{ request.object.spec.template.metadata.annotations.\"instrumentation.opentelemetry.io/inject-go\" || 'false' }}"
+        operator: NotEquals
+        value: "false"
+      - key: "{{ request.object.spec.template.metadata.annotations.\"instrumentation.opentelemetry.io/inject-apache-httpd\" || 'false' }}"
+        operator: NotEquals
+        value: "false"
+      - key: "{{ request.object.spec.template.metadata.annotations.\"instrumentation.opentelemetry.io/inject-nginx\" || 'false' }}"
+        operator: NotEquals
+        value: "false"
+      - key: "{{ request.object.spec.template.metadata.annotations.\"instrumentation.opentelemetry.io/inject-sdk\" || 'false' }}"
+        operator: NotEquals
+        value: "false"
+    validate:
+      message: "Si el Pod template habilita una inyección OpenTelemetry, debe declarar instrumentation.opentelemetry.io/container-names."
+      pattern:
+        spec:
+          template:
+            metadata:
+              annotations:
+                instrumentation.opentelemetry.io/container-names: "?*"

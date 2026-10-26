@@ -1,0 +1,27 @@
+apiVersion: kyverno.io/v1
+kind: Policy
+metadata:
+  name: require-minimum-termination-grace-period
+  namespace: app
+  annotations:
+    policies.kyverno.io/title: Require minimum termination grace period
+    policies.kyverno.io/category: MitoCode Cloud Native
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+
+  - name: require-minimum-grace-period
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+    validate:
+      message: "terminationGracePeriodSeconds debe ser al menos 5 para permitir drenado básico."
+      deny:
+        conditions:
+          any:
+          - key: "{{ request.object.spec.template.spec.terminationGracePeriodSeconds || `30` }}"
+            operator: LessThan
+            value: 5

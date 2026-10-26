@@ -1,0 +1,32 @@
+apiVersion: kyverno.io/v1
+kind: Policy
+metadata:
+  name: require-grpc-appprotocol
+  namespace: app
+  annotations:
+    policies.kyverno.io/title: Require appProtocol for gRPC services
+    policies.kyverno.io/category: MitoCode Cloud Native
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+
+  - name: require-appprotocol-on-grpc-ports
+    match:
+      any:
+      - resources:
+          kinds:
+          - Service
+    validate:
+      message: "Los Services con port.name=grpc deben declarar appProtocol: grpc."
+      foreach:
+      - list: "request.object.spec.ports[]"
+        deny:
+          conditions:
+            all:
+            - key: "{{ element.name || '' }}"
+              operator: Equals
+              value: grpc
+            - key: "{{ element.appProtocol || '' }}"
+              operator: NotEquals
+              value: grpc
