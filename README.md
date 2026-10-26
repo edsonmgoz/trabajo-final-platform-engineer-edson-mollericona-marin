@@ -157,6 +157,8 @@ kubectl apply -f stack/istio/gateway-ingress.yaml
 | Prometheus | `prometheus` | chart 29.6.0 (Prometheus v3.11.3) | `stack/prometheus/values-server.yaml` |
 | Collector de OpenTelemetry | `o11y` | otelcol-contrib 0.159.0 | `stack/otel/otel-collector.yaml` |
 | k8s-monitoring | `grafana-agent` | chart 4.0.3 (Alloy v1.15.0) | `stack/k8s-monitoring/values.yaml` |
+| Kyverno | `kyverno` | chart 3.8.0 (Kyverno v1.18.0) | `stack/kyverno/values.yaml` |
+| policy-reporter | `policy-reporter` | chart 3.7.4 | `stack/kyverno/values-pr.yaml` |
 
 ### Comprobación
 
@@ -403,6 +405,60 @@ sum by (span_name) (rate(traces_span_metrics_calls_total{service_name="products-
 ```
 
 Las métricas del agente y las de trazas llegan cada 60 segundos, así que las consultas usan una ventana de 5 minutos.
+
+## Políticas con Kyverno
+
+Kyverno aplica en el namespace `app` las doce políticas de plataforma del módulo de Kyverno del curso, y policy-reporter muestra sus resultados.
+
+```bash
+helm repo add kyverno https://kyverno.github.io/kyverno/
+helm repo update
+helm upgrade --install kyverno kyverno/kyverno -n kyverno --create-namespace --version 3.8.0 -f stack/kyverno/values.yaml
+helm repo add policy-reporter https://kyverno.github.io/policy-reporter
+helm repo update
+helm upgrade --install policy-reporter policy-reporter/policy-reporter --namespace policy-reporter --create-namespace --version 3.7.4 -f stack/kyverno/values-pr.yaml
+```
+
+Los cuatro controladores de Kyverno (admisión, background, limpieza y reportes) corren con una réplica en el nodo `system`, y el escaneo en segundo plano revisa cada 4 horas los recursos que ya existen. En el chart 3.7.4 de policy-reporter el plugin de Kyverno se activa con `plugin.kyverno.enabled`; las claves `ui.plugins.kyverno` y `kyvernoPlugin` de los values del curso pertenecen a la versión 2 del chart y no tienen efecto.
+
+### Políticas
+
+```bash
+kubectl apply -f stack/kyverno/policies/
+```
+
+| Archivo | Política | Exige |
+|---|---|---|
+| `01-resource-requests-limits.yaml` | `require-container-resources` | requests de CPU y memoria y límite de memoria en contenedores e init containers |
+| `02-container-security-context.yaml` | `restrict-container-security-context` | sin `privileged` ni escalada de privilegios, sistema de archivos de solo lectura y `capabilities.drop: [ALL]` |
+| `03-run-as-non-root.yaml` | `require-run-as-non-root` | `runAsNonRoot: true` en el pod o en todos sus contenedores |
+| `04-approved-images-no-latest.yaml` | `restrict-images-and-latest-tag` | imágenes de `us-central1-docker.pkg.dev` o de `edsonmgoz` en Docker Hub, con tag distinto de `latest` o digest |
+| `05-readiness-liveness-probes.yaml` | `require-liveness-readiness-probes` | sondas de readiness y liveness |
+| `06-node-selector-workloads.yaml` | `require-workloads-node-selector` | `nodeSelector` `node: workloads` |
+| `07-ownership-labels.yaml` | `require-ownership-labels` | etiquetas `owner`, `environment` y `app.kubernetes.io/name` en el Deployment y en el pod |
+| `08-grpc-service-appprotocol.yaml` | `require-grpc-appprotocol` | `appProtocol: grpc` en los puertos `grpc` de los Services |
+| `09-serviceaccount-automount-false.yaml` | `disable-serviceaccount-token-automount` | `automountServiceAccountToken: false` en las ServiceAccounts |
+| `10-no-plain-text-secrets-env.yaml` | `block-plain-text-secret-env` | `secretKeyRef` en las variables de entorno con nombre sensible |
+| `11-otel-annotations.yaml` | `require-otel-annotations` | `instrumentation.opentelemetry.io/container-names` cuando el pod pide inyección de OpenTelemetry |
+| `12-termination-grace-period.yaml` | `require-minimum-termination-grace-period` | `terminationGracePeriodSeconds` de al menos 5 |
+
+Son `Policy` de `kyverno.io/v1` en modo `Enforce` con escaneo en segundo plano, igual que en los laboratorios, con dos cambios: el namespace pasa de `default` a `app` y la política de registros admite `edsonmgoz` en lugar del namespace de Docker Hub del curso. Las tres primeras incluyen también `Rollout` de Argo Rollouts; como Argo Rollouts no está instalado, Kyverno avisa al crearlas y las aplica al resto de tipos. Kyverno marca como obsoletas `Policy` y `ClusterPolicy` de `kyverno.io/v1` y prevé retirarlas en la versión 1.20; la versión instalada, 1.18, las admite.
+
+Las políticas validan la plantilla del Deployment, no el Pod, de modo que los contenedores que añaden Istio y el operador de OpenTelemetry al crear el pod no se evalúan.
+
+La ServiceAccount `default` que Kubernetes crea en el namespace no cumplía la política 09. `k8s/namespace.yaml` la declara con `automountServiceAccountToken: false`, y Argo CD la sincronizó como cualquier otro cambio de `k8s/`; la actualización pasó por la admisión de Kyverno.
+
+### Comprobación
+
+```bash
+kubectl get policy -n app
+kubectl get policyreport -n app -o wide
+kubectl -n app set image deployment/products-api server=docker.io/edsonmgoz/products-api:latest --dry-run=server
+kubectl -n app set image deployment/products-api server=docker.io/library/nginx:1.29 --dry-run=server
+kubectl -n policy-reporter port-forward svc/policy-reporter-ui 8082:8080
+```
+
+Las doce políticas aparecen como `Ready`. Los reportes de `app` suman 14 resultados en `pass` y ninguno en `fail`: 11 del Deployment, 1 del Service y 1 de cada ServiceAccount. Los dos `set image` con `--dry-run=server` no modifican nada y terminan con `admission webhook "validate.kyverno.svc-fail" denied the request`, uno por el tag `latest` y otro por el registro. La interfaz de policy-reporter queda en `http://localhost:8082`.
 
 ## Evidencias
 
