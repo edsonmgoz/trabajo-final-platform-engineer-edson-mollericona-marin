@@ -4,3 +4,10 @@ metadata:
   name: app
   labels:
     istio-injection: enabled
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: default
+  namespace: app
+automountServiceAccountToken: false
