@@ -1,0 +1,73 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: products-api
+  description: Servicio REST de productos con Spring Boot y base H2 en memoria.
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+    backstage.io/source-location: url:http://gitea:3000/acme/products-api/src/branch/master/
+    backstage.io/kubernetes-id: products-api
+    backstage.io/kubernetes-namespace: app
+    argocd/app-name: products-api
+    gitea.com/project-slug: acme/products-api
+    docker.com/repository: edsonmgoz/products-api
+  tags:
+    - java
+    - spring-boot
+    - http
+  links:
+    - url: https://github.com/edsonmgoz/trabajo-final-platform-engineer-edson-mollericona-marin
+      title: Repositorio en GitHub
+    - url: https://hub.docker.com/r/edsonmgoz/products-api/tags
+      title: Imagen en Docker Hub
+spec:
+  type: service
+  lifecycle: production
+  owner: group:default/team-products
+  system: products
+  providesApis:
+    - api:default/products-api-http-api
+  dependsOn:
+    - resource:default/app-namespace
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: products-api-http-api
+  description: API HTTP de products-api, generada por springdoc a partir del servicio desplegado.
+spec:
+  type: openapi
+  lifecycle: production
+  owner: group:default/team-products
+  system: products
+  definition:
+    $text: ./docs/openapi.yaml
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: products
+  description: Gestión del catálogo de productos sobre la plataforma local.
+spec:
+  owner: group:default/team-products
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: team-products
+  description: Equipo responsable de products-api.
+spec:
+  type: team
+  profile:
+    displayName: Team Products
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: app-namespace
+  description: Namespace de Kubernetes donde se ejecuta products-api.
+spec:
+  type: kubernetes-namespace
+  owner: group:default/team-products
+  system: products

@@ -1,0 +1,84 @@
+name: java-docker-buildx
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*.*.*"
+  pull_request:
+    branches:
+      - main
+
+env:
+  IMAGE_NAME: ${{ values.serviceName }}
+  PLATFORMS: linux/amd64,linux/arm64
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute image tags
+        run: |
+          set -eu
+          IMAGE="docker.io/${DOCKERHUB_NAMESPACE:-${{ values.dockerNamespace }}}/${IMAGE_NAME}"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          REF_NAME="${GITHUB_REF_NAME:-dev}"
+          SAFE_REF="$(echo "${REF_NAME}" | tr '/_' '-' | tr -cd '[:alnum:].-')"
+
+          if echo "${GITHUB_REF:-}" | grep -Eq '^refs/tags/v?[0-9]+\.[0-9]+\.[0-9]+$'; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+            VERSION="${VERSION#v}"
+            echo "IMAGE_TAGS=${IMAGE}:${VERSION},${IMAGE}:latest" >> "$GITHUB_ENV"
+          else
+            echo "IMAGE_TAGS=${IMAGE}:${SAFE_REF}-${SHORT_SHA}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install Docker CLI
+        run: |
+          apt-get update
+          apt-get install -y docker.io
+
+      - name: Login to Docker Hub
+        run: |
+          set -eu
+          if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
+            echo "Skipping Docker Hub login for pull_request"
+            exit 0
+          fi
+          echo "$DOCKERHUB_TOKEN" | docker login docker.io -u "$DOCKERHUB_USERNAME" --password-stdin
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        run: |
+          set -eu
+          TAG_ARGS=""
+          OLD_IFS="$IFS"
+          IFS=","
+          for tag in $IMAGE_TAGS; do
+            TAG_ARGS="$TAG_ARGS --tag $tag"
+          done
+          IFS="$OLD_IFS"
+
+          PUSH_FLAG="--push"
+          if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
+            PUSH_FLAG="--load"
+            PLATFORMS="linux/amd64"
+          fi
+
+          docker buildx build \
+            --file ./Dockerfile \
+            --platform "$PLATFORMS" \
+            --label org.opencontainers.image.title=${{ values.serviceName }} \
+            --label org.opencontainers.image.source=http://${{ values.repoHost }}/${{ values.repoOwner }}/${{ values.repoName }} \
+            $TAG_ARGS \
+            $PUSH_FLAG \
+            .

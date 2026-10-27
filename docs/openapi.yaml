@@ -1,0 +1,243 @@
+openapi: 3.1.0
+info:
+  title: Products API
+  description: CRUD de productos
+  version: 0.1.0
+servers:
+- url: /
+tags:
+- name: Productos
+  description: CRUD de productos
+paths:
+  /api/products/{id}:
+    get:
+      tags:
+      - Productos
+      summary: Obtener un producto por id
+      operationId: getById
+      parameters:
+      - name: id
+        in: path
+        description: Id del producto
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: Producto encontrado
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+        "404":
+          description: Producto no encontrado
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      tags:
+      - Productos
+      summary: Actualizar un producto existente
+      operationId: update
+      parameters:
+      - name: id
+        in: path
+        description: Id del producto
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductRequest"
+        required: true
+      responses:
+        "200":
+          description: Producto actualizado
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+        "400":
+          description: Datos invalidos
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+        "404":
+          description: Producto no encontrado
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags:
+      - Productos
+      summary: Eliminar un producto
+      operationId: delete
+      parameters:
+      - name: id
+        in: path
+        description: Id del producto
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "204":
+          description: Producto eliminado
+        "404":
+          description: Producto no encontrado
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/products:
+    get:
+      tags:
+      - Productos
+      summary: Listar todos los productos
+      operationId: getAll
+      responses:
+        "200":
+          description: Lista de productos
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProductResponse"
+    post:
+      tags:
+      - Productos
+      summary: Crear un producto
+      operationId: create
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductRequest"
+        required: true
+      responses:
+        "201":
+          description: Producto creado
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+        "400":
+          description: Datos invalidos
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+components:
+  schemas:
+    ProductRequest:
+      type: object
+      description: Datos para crear o actualizar un producto
+      properties:
+        name:
+          type: string
+          description: Nombre del producto
+          example: Laptop gamer
+          maxLength: 100
+          minLength: 2
+        description:
+          type: string
+          description: Descripcion opcional
+          example: Laptop con GPU dedicada
+          maxLength: 500
+          minLength: 0
+        price:
+          type: number
+          description: Precio unitario
+          example: 1500.0
+          minimum: 0.0
+        stock:
+          type: integer
+          format: int32
+          description: Unidades disponibles
+          example: 10
+          minimum: 0
+        active:
+          type: boolean
+          description: Si el producto esta activo
+          example: true
+      required:
+      - name
+      - price
+      - stock
+    ValidationErrorResponse:
+      type: object
+      description: Errores de validacion por campo
+      properties:
+        status:
+          type: integer
+          format: int32
+          description: Codigo HTTP
+          example: 400
+        errors:
+          type: object
+          additionalProperties:
+            type: string
+          description: Mensaje de error por campo
+    ErrorResponse:
+      type: object
+      description: Error devuelto por la API
+      properties:
+        status:
+          type: integer
+          format: int32
+          description: Codigo HTTP
+          example: 404
+        message:
+          type: string
+          description: Detalle del error
+          example: No se encontro el producto con id 99
+        path:
+          type: string
+          description: Ruta solicitada
+          example: /api/products/99
+    ProductResponse:
+      type: object
+      description: Datos del producto devueltos por la API
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Identificador unico
+          example: 1
+        name:
+          type: string
+          description: Nombre del producto
+          example: Laptop gamer
+        description:
+          type: string
+          description: Descripcion opcional
+          example: Laptop con GPU dedicada
+        price:
+          type: number
+          description: Precio unitario
+          example: 1500.0
+        stock:
+          type: integer
+          format: int32
+          description: Unidades disponibles
+          example: 10
+        active:
+          type: boolean
+          description: Si el producto esta activo
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          description: Fecha de creacion
+        updatedAt:
+          type: string
+          format: date-time
+          description: Ultima actualizacion

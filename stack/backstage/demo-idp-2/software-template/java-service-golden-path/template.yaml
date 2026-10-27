@@ -1,0 +1,268 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: java-service-golden-path
+  title: Java Service Golden Path
+  description: Crea un servicio Java con catalogo, docs, CI, Dockerfile y manifests Kubernetes listos para Gitea, Backstage, ArgoCD, Istio y observabilidad.
+  tags:
+    - java
+    - golden-path
+    - gitea
+spec:
+  owner: group:default/team-platform
+  type: service
+
+  parameters:
+    - title: Servicio
+      required:
+        - serviceName
+        - description
+        - owner
+        - serviceType
+      properties:
+        serviceName:
+          title: Nombre del servicio
+          type: string
+          description: Nombre DNS-safe. Se usara para repo, imagen, Deployment, Service y entidad Backstage.
+          pattern: "^[a-z][a-z0-9-]{2,40}$"
+          ui:autofocus: true
+          ui:help: "Ejemplo: orderservice"
+        description:
+          title: Descripcion
+          type: string
+          description: Descripcion corta del componente.
+        owner:
+          title: Owner
+          type: string
+          default: group:default/team-platform
+          ui:field: OwnerPicker
+          ui:options:
+            allowedKinds:
+              - Group
+              - User
+        system:
+          title: Sistema
+          type: string
+          default: online-boutique
+          description: System de Backstage al que pertenece.
+        serviceType:
+          title: Tipo
+          type: string
+          default: API
+          enum:
+            - API
+            - BATCH
+            - ASYNC
+          enumNames:
+            - API
+            - BATCH
+            - ASYNC
+      dependencies:
+        serviceType:
+          oneOf:
+            - properties:
+                serviceType:
+                  enum:
+                    - API
+                receiveTraffic:
+                  title: Entrada de trafico
+                  type: string
+                  default: http
+                  enum:
+                    - http
+                    - grpc
+                  enumNames:
+                    - HTTP
+                    - gRPC
+                servicePort:
+                  title: Puerto del contenedor
+                  type: integer
+                  default: 8080
+                httpPathPrefix:
+                  title: HTTP path prefix
+                  type: string
+                  default: /
+                  description: Se usa cuando el protocolo es HTTP para crear el HTTPRoute.
+                routeHost:
+                  title: Hostname opcional
+                  type: string
+                  default: ""
+                  description: Si se deja vacio, el HTTPRoute/GRPCRoute acepta cualquier host del Gateway.
+                gatewayName:
+                  title: Gateway
+                  type: string
+                  default: ingress-public
+                gatewayNamespace:
+                  title: Gateway namespace
+                  type: string
+                  default: istio-system
+              required:
+                - receiveTraffic
+                - servicePort
+            - properties:
+                serviceType:
+                  enum:
+                    - BATCH
+                receiveTraffic:
+                  type: string
+                  default: none
+                  ui:widget: hidden
+                servicePort:
+                  type: integer
+                  default: 8080
+                  ui:widget: hidden
+                httpPathPrefix:
+                  type: string
+                  default: /
+                  ui:widget: hidden
+                routeHost:
+                  type: string
+                  default: ""
+                  ui:widget: hidden
+                gatewayName:
+                  type: string
+                  default: ingress-public
+                  ui:widget: hidden
+                gatewayNamespace:
+                  type: string
+                  default: istio-system
+                  ui:widget: hidden
+            - properties:
+                serviceType:
+                  enum:
+                    - ASYNC
+                receiveTraffic:
+                  type: string
+                  default: none
+                  ui:widget: hidden
+                servicePort:
+                  type: integer
+                  default: 8080
+                  ui:widget: hidden
+                httpPathPrefix:
+                  type: string
+                  default: /
+                  ui:widget: hidden
+                routeHost:
+                  type: string
+                  default: ""
+                  ui:widget: hidden
+                gatewayName:
+                  type: string
+                  default: ingress-public
+                  ui:widget: hidden
+                gatewayNamespace:
+                  type: string
+                  default: istio-system
+                  ui:widget: hidden
+
+    - title: Plataforma
+      required:
+        - namespace
+        - dockerNamespace
+      properties:
+        namespace:
+          title: Namespace Kubernetes
+          type: string
+          default: default
+        dockerNamespace:
+          title: Docker Hub namespace
+          type: string
+          default: wjma90
+        replicas:
+          title: Replicas
+          type: integer
+          default: 1
+        cpuRequest:
+          title: CPU request
+          type: string
+          default: 100m
+        memoryRequest:
+          title: Memory request
+          type: string
+          default: 256Mi
+        cpuLimit:
+          title: CPU limit
+          type: string
+          default: "1"
+        memoryLimit:
+          title: Memory limit
+          type: string
+          default: 512Mi
+
+    - title: Repositorio Gitea
+      required:
+        - repoUrl
+        - repoVisibility
+      properties:
+        repoUrl:
+          title: Repository Location
+          type: string
+          ui:field: RepoUrlPicker
+          ui:options:
+            allowedHosts:
+              - gitea:3000
+            allowedOwners:
+              - dummy
+        repoVisibility:
+          title: Visibilidad
+          type: string
+          default: public
+          enum:
+            - public
+            - private
+
+  steps:
+    - id: fetch-base
+      name: Generar Golden Path Java
+      action: fetch:template
+      input:
+        url: ./skeleton
+        values:
+          serviceName: ${{ parameters.serviceName }}
+          description: ${{ parameters.description }}
+          owner: ${{ parameters.owner }}
+          system: ${{ parameters.system }}
+          serviceType: ${{ parameters.serviceType }}
+          receiveTraffic: ${{ parameters.receiveTraffic }}
+          servicePort: ${{ parameters.servicePort }}
+          httpPathPrefix: ${{ parameters.httpPathPrefix }}
+          routeHost: ${{ parameters.routeHost }}
+          gatewayName: ${{ parameters.gatewayName }}
+          gatewayNamespace: ${{ parameters.gatewayNamespace }}
+          namespace: ${{ parameters.namespace }}
+          dockerNamespace: ${{ parameters.dockerNamespace }}
+          replicas: ${{ parameters.replicas }}
+          cpuRequest: ${{ parameters.cpuRequest }}
+          memoryRequest: ${{ parameters.memoryRequest }}
+          cpuLimit: ${{ parameters.cpuLimit }}
+          memoryLimit: ${{ parameters.memoryLimit }}
+          repoUrl: ${{ parameters.repoUrl }}
+          repoOwner: ${{ parameters.repoUrl | parseRepoUrl | pick('owner') }}
+          repoName: ${{ parameters.repoUrl | parseRepoUrl | pick('repo') }}
+          repoHost: ${{ parameters.repoUrl | parseRepoUrl | pick('host') }}
+
+    - id: publish
+      name: Publicar en Gitea
+      action: publish:gitea
+      input:
+        repoUrl: ${{ parameters.repoUrl }}
+        description: ${{ parameters.description }}
+        repoVisibility: ${{ parameters.repoVisibility }}
+        defaultBranch: main
+        gitCommitMessage: "feat: initialize ${{ parameters.serviceName }} golden path"
+
+    - id: catalog-index-pr
+      name: Crear PR para alta en catalogo
+      action: platform-gitea:create-catalog-index-pr
+      input:
+        repoUrl: ${{ parameters.repoUrl }}
+        catalogInfoPath: catalog-info.yaml
+        catalogIndexPath: backstage/catalog/index.yaml
+
+  output:
+    links:
+      - title: Repositorio
+        url: ${{ steps.publish.output.remoteUrl }}
+      - title: PR de catalogo
+        url: ${{ steps.catalog-index-pr.output.pullRequestUrl }}

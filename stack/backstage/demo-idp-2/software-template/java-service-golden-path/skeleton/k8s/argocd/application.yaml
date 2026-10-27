@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ${{ values.serviceName }}
+  namespace: argocd
+  labels:
+    backstage.io/kubernetes-id: ${{ values.serviceName }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    course.platform/source-repo: http://${{ values.repoHost }}/${{ values.repoOwner }}/${{ values.repoName }}.git
+    backstage.io/kubernetes-id: ${{ values.serviceName }}
+spec:
+  project: online-boutique
+  source:
+    repoURL: http://gitea:3000/root/repo-infra.git
+    targetRevision: main
+    path: manifests
+    directory:
+      include: ${{ values.serviceName }}.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ${{ values.namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

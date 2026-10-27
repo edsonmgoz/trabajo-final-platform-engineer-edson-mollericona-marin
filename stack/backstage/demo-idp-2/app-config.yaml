@@ -1,0 +1,215 @@
+app:
+  title: Scaffolded Backstage App
+  baseUrl: http://127.0.0.1:7001
+  listen:
+    host: 127.0.0.1
+    port: 7001
+
+  packages: all
+
+  extensions:
+    - page:catalog:
+        config:
+          path: /
+    - home-page-widget:home/toolkit:
+        config:
+          tools:
+            - url: https://backstage.io/docs
+              label: Docs
+              icon: docs
+            - url: https://github.com/backstage/backstage
+              label: GitHub
+              icon: github
+            - url: https://github.com/backstage/backstage/blob/master/CONTRIBUTING.md
+              label: Contributing
+              icon: docs
+            - url: https://backstage.io/plugins
+              label: Plugins Directory
+              icon: kind:component
+            - url: https://github.com/backstage/backstage/issues/new/choose
+              label: Submit New Issue
+              icon: github
+    - home-page-widget:home/world-clock:
+        config:
+          clockConfigs:
+            - label: NYC
+              timeZone: America/New_York
+            - label: UTC
+              timeZone: UTC
+            - label: STO
+              timeZone: Europe/Stockholm
+            - label: TYO
+              timeZone: Asia/Tokyo
+    - page:home:
+        config:
+          defaultConfig:
+            - component: HomePageSearchBar
+              column: 0
+              row: 0
+              width: 12
+              height: 2
+              deletable: false
+            - component: GettingStarted
+              column: 0
+              row: 1
+              width: 4
+              height: 11
+            - component: HomePageStarredEntities
+              column: 4
+              row: 2
+              width: 4
+              height: 4
+            - component: HomePageRandomJoke
+              column: 8
+              row: 2
+              width: 4
+              height: 4
+            - component: HomePageToolkit
+              column: 4
+              row: 6
+              width: 4
+              height: 3
+            - component: HomePageWorldClock
+              column: 8
+              row: 6
+              width: 4
+              height: 3
+            - component: HomePageMostVisited
+              column: 4
+              row: 9
+              width: 4
+              height: 4
+            - component: HomePageRecentlyVisited
+              column: 8
+              row: 9
+              width: 4
+              height: 4
+    - page:kubernetes:
+        disabled: true
+    - catalog-filter:catalog/list:
+        config:
+          initialFilter: all
+    - entity-content:argocd/gitops
+    - entity-content:kubernetes/kubernetes
+    - entity-content:gitea/git-actions
+    - entity-content:docker/images
+    - entity-content:backstage-plugin-prometheus/metrics
+
+organization:
+  name: My Company
+
+backend:
+  baseUrl: http://127.0.0.1:7007
+  listen:
+    port: 7007
+    host: 127.0.0.1
+  csp:
+    connect-src: ["'self'", 'http:', 'https:']
+  cors:
+    origin:
+      - http://127.0.0.1:7001
+      - http://localhost:7001
+    methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
+    credentials: true
+  database:
+    client: better-sqlite3
+    connection: ':memory:'
+  actions:
+    pluginSources:
+      - auth
+      - catalog
+      - scaffolder
+  reading:
+    allow:
+      - host: gitea:3000
+
+integrations:
+  gitea:
+    - host: gitea:3000
+      baseUrl: http://gitea:3000
+      password: ${GITEA_TOKEN}
+
+proxy:
+  endpoints:
+    '/prometheus/api':
+      target: http://localhost:9090/api/v1/
+      changeOrigin: true
+      secure: false
+    '/docker':
+      target: https://hub.docker.com
+      changeOrigin: true
+
+techdocs:
+  builder: 'local'
+  generator:
+    runIn: 'docker'
+  publisher:
+    type: 'local'
+
+auth:
+  providers:
+    guest:
+      dangerouslyAllowOutsideDevelopment: true
+      userEntityRef: user:default/guest
+      ownershipEntityRefs:
+        - user:default/guest
+        - group:default/guests
+  experimentalClientIdMetadataDocuments:
+    enabled: false
+
+catalog:
+  import:
+    entityFilename: catalog-info.yaml
+    pullRequestBranchName: backstage-integration
+  rules:
+    - allow: [Component, System, API, Resource, Location, Group, User, Template]
+  locations:
+    - type: file
+      target: ../../examples/org.yaml
+      rules:
+        - allow: [User, Group]
+    - type: file
+      target: ../../software-template/java-service-golden-path/template.yaml
+    - type: url
+      target: http://gitea:3000/acme/products-api/src/branch/master/catalog-info.yaml
+
+kubernetes:
+  frontend:
+    podDelete:
+      enabled: true
+  serviceLocatorMethod:
+    type: multiTenant
+  clusterLocatorMethods:
+    - type: config
+      clusters:
+        - name: local
+          url: http://127.0.0.1:8001
+          authProvider: localKubectlProxy
+          skipMetricsLookup: false
+
+argocd:
+  username: ${ARGOCD_USERNAME}
+  password: ${ARGOCD_PASSWORD}
+  appLocatorMethods:
+    - type: config
+      instances:
+        - name: argoInstance
+          url: http://localhost:8080
+
+permission:
+  enabled: true
+
+mcpActions:
+  name: 'My Company Backstage'
+  description: 'Tools for managing your software catalog, creating new services from templates, and exploring your developer portal'
+
+prometheus:
+  proxyPath: /prometheus/api
+  uiUrl: http://localhost:9090
+
+platformGitea:
+  mockMode: false
+  actionsEnabled: true
+  gitea:
+    baseUrl: http://gitea:3000
+    token: ${GITEA_TOKEN}

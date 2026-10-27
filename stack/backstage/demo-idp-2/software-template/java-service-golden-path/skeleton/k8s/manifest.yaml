@@ -1,0 +1,170 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${{ values.serviceName }}
+  namespace: ${{ values.namespace }}
+  labels:
+    app: ${{ values.serviceName }}
+    backstage.io/kubernetes-id: ${{ values.serviceName }}
+  annotations:
+    backstage.io/kubernetes-id: ${{ values.serviceName }}
+spec:
+  replicas: ${{ values.replicas }}
+  selector:
+    matchLabels:
+      app: ${{ values.serviceName }}
+  template:
+    metadata:
+      labels:
+        app: ${{ values.serviceName }}
+        backstage.io/kubernetes-id: ${{ values.serviceName }}
+      annotations:
+        instrumentation.opentelemetry.io/inject-java: "true"
+        instrumentation.opentelemetry.io/container-names
+        backstage.io/kubernetes-id: ${{ values.serviceName }}
+        sidecar.istio.io/rewriteAppHTTPProbers: "true"
+    spec:
+      serviceAccountName: ${{ values.serviceName }}
+      terminationGracePeriodSeconds: 5
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: server
+          image: docker.io/${{ values.dockerNamespace }}/${{ values.serviceName }}:latest
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+          ports:
+            - name: {% if values.receiveTraffic == 'grpc' %}grpc{% else %}http{% endif %}
+              containerPort: ${{ values.servicePort }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          env:
+            - name: SERVICE_NAME
+              value: ${{ values.serviceName | dump }}
+            - name: SERVICE_TYPE
+              value: ${{ values.serviceType | dump }}
+            - name: TRANSPORT
+              value: ${{ values.receiveTraffic | dump }}
+            - name: PORT
+              value: "${{ values.servicePort }}"
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Djava.io.tmpdir=/tmp"
+          resources:
+            requests:
+              cpu: ${{ values.cpuRequest | dump }}
+              memory: ${{ values.memoryRequest | dump }}
+            limits:
+              cpu: ${{ values.cpuLimit | dump }}
+              memory: ${{ values.memoryLimit | dump }}
+{% if values.receiveTraffic == 'http' %}
+          readinessProbe:
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            httpGet:
+              path: /healthz
+              port: ${{ values.servicePort }}
+          livenessProbe:
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            httpGet:
+              path: /healthz
+              port: ${{ values.servicePort }}
+{% endif %}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ${{ values.serviceName }}
+  namespace: ${{ values.namespace }}
+  labels:
+    backstage.io/kubernetes-id: ${{ values.serviceName }}
+  annotations:
+    backstage.io/kubernetes-id: ${{ values.serviceName }}
+{% if values.receiveTraffic != 'none' %}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${{ values.serviceName }}
+  namespace: ${{ values.namespace }}
+  labels:
+    app: ${{ values.serviceName }}
+    backstage.io/kubernetes-id: ${{ values.serviceName }}
+  annotations:
+    backstage.io/kubernetes-id: ${{ values.serviceName }}
+spec:
+  type: ClusterIP
+  selector:
+    app: ${{ values.serviceName }}
+  ports:
+    - name: {% if values.receiveTraffic == 'grpc' %}grpc{% else %}http{% endif %}
+      appProtocol: {% if values.receiveTraffic == 'grpc' %}grpc{% else %}http{% endif %}
+      port: ${{ values.servicePort }}
+      targetPort: ${{ values.servicePort }}
+{% endif %}
+{% if values.receiveTraffic == 'http' %}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ${{ values.serviceName }}-route
+  namespace: ${{ values.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    backstage.io/kubernetes-id: ${{ values.serviceName }}
+  labels:
+    backstage.io/kubernetes-id: ${{ values.serviceName }}
+spec:
+  parentRefs:
+    - name: ${{ values.gatewayName }}
+      namespace: ${{ values.gatewayNamespace }}
+{% if values.routeHost %}
+  hostnames:
+    - ${{ values.routeHost | dump }}
+{% endif %}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: ${{ values.httpPathPrefix | dump }}
+      backendRefs:
+        - name: ${{ values.serviceName }}
+          port: ${{ values.servicePort }}
+{% elif values.receiveTraffic == 'grpc' %}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GRPCRoute
+metadata:
+  name: ${{ values.serviceName }}-route
+  namespace: ${{ values.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    backstage.io/kubernetes-id: ${{ values.serviceName }}
+  labels:
+    backstage.io/kubernetes-id: ${{ values.serviceName }}
+spec:
+  parentRefs:
+    - name: ${{ values.gatewayName }}
+      namespace: ${{ values.gatewayNamespace }}
+{% if values.routeHost %}
+  hostnames:
+    - ${{ values.routeHost | dump }}
+{% endif %}
+  rules:
+    - backendRefs:
+        - name: ${{ values.serviceName }}
+          port: ${{ values.servicePort }}
+{% endif %}

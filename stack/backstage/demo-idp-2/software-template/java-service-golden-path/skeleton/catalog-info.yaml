@@ -1,0 +1,79 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ${{ values.serviceName }}
+  description: ${{ values.description | dump }}
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+    backstage.io/source-location: url:http://${{ values.repoHost }}/${{ values.repoOwner }}/${{ values.repoName }}/src/branch/main/
+    backstage.io/kubernetes-id: ${{ values.serviceName }}
+    argocd/app-name: ${{ values.serviceName }}
+    gitea.com/project-slug: ${{ values.repoOwner }}/${{ values.repoName }}
+    docker.com/repository: ${{ values.dockerNamespace }}/${{ values.serviceName }}
+  tags:
+    - java
+    - ${{ values.serviceType | lower }}
+    - ${{ values.receiveTraffic }}
+spec:
+  type: ${{ values.serviceType | lower }}
+  lifecycle: experimental
+  owner: ${{ values.owner }}
+  system: ${{ values.system }}
+{% if values.receiveTraffic == 'http' %}
+  providesApis:
+    - api:default/${{ values.serviceName }}-http-api
+{% elif values.receiveTraffic == 'grpc' %}
+  providesApis:
+    - api:default/${{ values.serviceName }}-grpc-api
+{% endif %}
+  dependsOn:
+    - resource:default/online-boutique-namespace
+{% if values.receiveTraffic == 'http' %}
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: ${{ values.serviceName }}-http-api
+  description: HTTP API expuesta por ${{ values.serviceName }}.
+spec:
+  type: openapi
+  lifecycle: experimental
+  owner: ${{ values.owner }}
+  system: ${{ values.system }}
+  definition: |
+    openapi: 3.0.3
+    info:
+      title: ${{ values.serviceName }} API
+      version: 0.1.0
+    paths:
+      ${{ values.httpPathPrefix }}:
+        get:
+          summary: Placeholder endpoint
+          responses:
+            '200':
+              description: OK
+{% elif values.receiveTraffic == 'grpc' %}
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: ${{ values.serviceName }}-grpc-api
+  description: gRPC API expuesta por ${{ values.serviceName }}.
+spec:
+  type: grpc
+  lifecycle: experimental
+  owner: ${{ values.owner }}
+  system: ${{ values.system }}
+  definition: |
+    syntax = "proto3";
+    package ${{ values.serviceName | replace("-", "_") }};
+
+    service GoldenPathService {
+      rpc Ping (PingRequest) returns (PingResponse);
+    }
+
+    message PingRequest {}
+    message PingResponse {
+      string message = 1;
+    }
+{% endif %}

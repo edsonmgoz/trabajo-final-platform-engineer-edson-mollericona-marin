@@ -1,0 +1,8 @@
+site_name: products-api
+site_description: Servicio REST de productos desplegado sobre la plataforma local del curso.
+nav:
+  - Inicio: index.md
+  - Arquitectura: arquitectura.md
+  - Operación: operacion.md
+plugins:
+  - techdocs-core
