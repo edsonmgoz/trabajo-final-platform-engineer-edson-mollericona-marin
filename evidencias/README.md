@@ -54,6 +54,22 @@ Los gráficos de Prometheus muestran la hora en UTC; la prueba de carga con sieg
 | [04-prometheus-istio.png](06-observabilidad/04-prometheus-istio.png) | `sum by (destination_service_name) (rate(istio_requests_total{reporter="destination", destination_service_name=~"products-api.*"}[5m]))` | La consulta de tráfico de la card de métricas de Backstage, sobre las métricas del sidecar de Istio recogidas por Alloy |
 | [05-prometheus-trazas.png](06-observabilidad/05-prometheus-trazas.png) | `sum by (span_name) (rate(traces_span_metrics_calls_total{service_name="products-api", span_name!~".*actuator.*"}[5m]))` | Las trazas del agente convertidas en métricas por el conector `spanmetrics`: petición HTTP, repositorio, consultas JDBC a H2 y commit de la transacción |
 
+## 07. Developer Portal
+
+Backstage en local, en `http://127.0.0.1:7001`. Los gráficos de la pestaña Metrics muestran la hora local (UTC-4).
+
+| Captura | Origen | Descripción |
+|---|---|---|
+| [01-catalogo.png](07-developer-portal/01-catalogo.png) | Catálogo, filtro `Component` | `products-api` con el system `products`, el owner Team Products, el tipo `service`, el lifecycle `production` y los tags `java`, `spring-boot` y `http` |
+| [02-overview-a.png](07-developer-portal/02-overview-a.png) | Entidad `products-api`, pestaña Overview | API `products-api-http-api` de tipo OpenAPI que provee el servicio, ficha About con descripción, owner, system y tags, y enlaces al repositorio de GitHub y a la imagen de Docker Hub |
+| [02-overview-b.png](07-developer-portal/02-overview-b.png) | Entidad `products-api`, pestaña Overview | Dependencia del Resource `app-namespace` y grafo de relaciones: `ownedBy` Team Products, `partOf` products, `providesApi` products-api-http-api y `dependsOn` app-namespace |
+| [03-card-metrics.png](07-developer-portal/03-card-metrics.png) | Pestaña Metrics, Traffic, ventana de 30 minutos | Latencia p95 y peticiones por segundo de `products-api` durante la prueba de carga con siege, calculadas en Prometheus a partir de las métricas del sidecar de Istio |
+| [04-card-gitops-a.png](07-developer-portal/04-card-gitops-a.png) | Pestaña ArgoCD, ArgoCD overview | Application `products-api` de la instancia `argoInstance` en `Synced` y `Healthy` |
+| [04-card-gitops-b.png](07-developer-portal/04-card-gitops-b.png) | Pestaña ArgoCD, ArgoCD history | Los cuatro despliegues de la Application con autor, mensaje y revisión; el más reciente es `7f2df6f` (`Raise products-api memory request to 512Mi`), del 27 de octubre de 2026. La columna `Took` muestra la duración con signo negativo, aunque los tiempos que registra Argo CD son correctos: el último despliegue tardó 3 segundos |
+| [05-kubernetes.png](07-developer-portal/05-kubernetes.png) | Pestaña Kubernetes | Cluster `local` y Deployment `products-api` del namespace `app` sin pods con errores; el pod `products-api-6cfdcc47fc-nd996` está en `Running` con 0 reinicios, el 11 % del request de CPU y el 69 % de los 512Mi de memoria. El plugin solo cuenta los contenedores principales, por eso muestra `1/1`: `istio-proxy` es un sidecar nativo, un init container con `restartPolicy: Always` |
+| [06-techdocs.png](07-developer-portal/06-techdocs.png) | Pestaña TechDocs, página Arquitectura | Documentación generada desde `docs/` con MkDocs: recorrido de una petición y recursos del servicio, con requests de 100m de CPU y 512Mi de memoria |
+| [07-docker-images.png](07-developer-portal/07-docker-images.png) | Pestaña Development, Images | Los 14 tags de `edsonmgoz/products-api` en Docker Hub, con `master-adca2673c016` como el más reciente, para `linux/amd64` y `linux/arm64` |
+
 ## 08. Políticas
 
 | Captura | Comando u origen | Descripción |

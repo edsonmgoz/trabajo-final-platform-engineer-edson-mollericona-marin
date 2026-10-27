@@ -406,6 +406,76 @@ sum by (span_name) (rate(traces_span_metrics_calls_total{service_name="products-
 
 Las métricas del agente y las de trazas llegan cada 60 segundos, así que las consultas usan una ventana de 5 minutos.
 
+## Developer Portal con Backstage
+
+Backstage 1.54.0 corre en el Mac con `yarn start`, como en los laboratorios de plugins del curso, y llega al cluster y a Gitea mediante port-forwards y `kubectl proxy`. La aplicación está en `stack/backstage/demo-idp-2` y parte de la `demo-idp-2` del curso con tres cambios: las credenciales salen de variables de entorno, el catálogo lee el `catalog-info.yaml` de `acme/products-api` y el módulo de Prometheus toma el namespace de la anotación `backstage.io/kubernetes-namespace` en lugar de usar siempre `default`.
+
+### Requisitos
+
+```bash
+brew install node@24
+export PATH="$(brew --prefix node@24)/bin:$PATH"
+npm install -g yarn
+echo "127.0.0.1 gitea" | sudo tee -a /etc/hosts
+```
+
+La aplicación admite Node 22 o 24 y fija Yarn 4.13.0 en `.yarn/releases`; el Yarn global delega en esa versión. Los módulos nativos, como `better-sqlite3`, se compilan para la versión de Node que hace la instalación, así que cada terminal de Backstage necesita el `PATH` de Node 24. La entrada de `/etc/hosts` permite usar desde el Mac las mismas URLs `http://gitea:3000` que Argo CD usa dentro del cluster.
+
+Backstage accede a Gitea con un token de acceso del usuario `edsonmgoz` con el permiso `repository: Read and Write`, creado en Settings > Applications. El token no se guarda en ningún archivo.
+
+### Instalación
+
+```bash
+cd stack/backstage/demo-idp-2
+yarn install
+yarn tsc
+```
+
+### Arranque
+
+Cada port-forward y `kubectl proxy` ocupan su propia terminal:
+
+```bash
+kubectl -n argocd port-forward svc/argocd-server 8080:80
+kubectl -n prometheus port-forward svc/prometheus-server 9090:80
+kubectl proxy --port=8001
+```
+
+```bash
+cd stack/backstage/demo-idp-2
+export PATH="$(brew --prefix node@24)/bin:$PATH"
+read -rs GITEA_TOKEN && export GITEA_TOKEN
+export ARGOCD_USERNAME=admin
+export ARGOCD_PASSWORD="$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)"
+yarn start
+```
+
+El portal queda en `http://127.0.0.1:7001` y el backend en `http://127.0.0.1:7007`, con sesión de invitado y base de datos SQLite en memoria.
+
+### Integraciones
+
+| Pestaña de `products-api` | Plugin | Origen de los datos |
+|---|---|---|
+| Overview | catálogo y `catalog-graph` | `catalog-info.yaml` de la rama `master` de `acme/products-api` en Gitea |
+| TechDocs | `techdocs` | `mkdocs.yml` y `docs/`, generados con la imagen `spotify/techdocs:v1.2.8` |
+| Development | `@internal/plugin-platform-gitea` y `@internal/plugin-platform-docker` | ejecuciones de Gitea Actions de `acme/products-api` y tags de `edsonmgoz/products-api` en Docker Hub, por el proxy `/docker` |
+| Kubernetes | `kubernetes` | cluster `local` a través de `kubectl proxy` en el puerto 8001 |
+| Metrics | `@roadiehq/backstage-plugin-prometheus` con el módulo `prometheus` de la aplicación | Prometheus a través del proxy `/prometheus/api` y el port-forward del puerto 9090 |
+| ArgoCD | `@roadiehq/backstage-plugin-argo-cd` | Application `products-api` en `http://localhost:8080` |
+
+Las entidades del catálogo (Component, API, System, Group y Resource) y las anotaciones que enlazan cada pestaña se describen en `docs/index.md`, que también se publica en TechDocs. La API `products-api-http-api` muestra la especificación OpenAPI de `docs/openapi.yaml`, obtenida del servicio desplegado.
+
+La pestaña Kubernetes mostró que el contenedor `server` usaba 382Mi, el 149 % de su request de 256Mi. El request de memoria pasó a 512Mi, igual que el límite, con un commit en `k8s/products-api.yaml` que Argo CD sincronizó.
+
+### Comprobación
+
+```bash
+curl -s http://127.0.0.1:7007/.backstage/health/v1/readiness
+siege -c 15 -t 60S http://localhost/api/products
+```
+
+El backend responde con `status` en `ok`. Después de la carga, la pestaña Metrics muestra la latencia p95 y las peticiones por segundo; la pestaña ArgoCD, la Application en `Synced` y `Healthy` con su historial; y la pestaña Kubernetes, el pod sin errores con su consumo de CPU y memoria.
+
 ## Políticas con Kyverno
 
 Kyverno aplica en el namespace `app` las doce políticas de plataforma del módulo de Kyverno del curso, y policy-reporter muestra sus resultados.
