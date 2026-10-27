@@ -42,7 +42,7 @@ El tráfico entre el gateway y el sidecar viaja cifrado con mTLS. El gateway y l
 |---|---|
 | Namespace `app` | Etiqueta `istio-injection=enabled` |
 | ServiceAccount `products-api` | Sin montaje automático del token |
-| Deployment `products-api` | Una réplica, usuario 1000, sin escalada de privilegios, sistema de archivos raíz de solo lectura, requests de 100m de CPU y 256Mi de memoria, límites de 1 CPU y 512Mi, sondas de readiness y liveness |
+| Deployment `products-api` | Una réplica, usuario 1000, sin escalada de privilegios, sistema de archivos raíz de solo lectura, requests de 100m de CPU y 512Mi de memoria, límites de 1 CPU y 512Mi, sondas de readiness y liveness |
 | Service `products-api` | ClusterIP en el puerto 8080 |
 | HTTPRoute `products-api-route` | Prefijo `/api/products` del Gateway `ingress-public` |
 

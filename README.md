@@ -224,7 +224,7 @@ Ese fue el despliegue inicial, con la imagen `v0.1.0`. Desde que Argo CD gestion
 | Recurso | Configuración |
 |---|---|
 | ServiceAccount `products-api` | Sin montaje automático del token de la API de Kubernetes |
-| Deployment `products-api` | Una réplica en el nodo `workloads` con la imagen `v0.1.1`. Se ejecuta con el usuario 1000, sin capabilities ni escalada de privilegios y con el sistema de archivos raíz en solo lectura; `/tmp` es un volumen `emptyDir`. Requests de 100m de CPU y 256Mi de memoria, límites de 1 CPU y 512Mi. Sondas de readiness y liveness sobre `/actuator/health/readiness` y `/actuator/health/liveness` |
+| Deployment `products-api` | Una réplica en el nodo `workloads` con la imagen `v0.1.1`. Se ejecuta con el usuario 1000, sin capabilities ni escalada de privilegios y con el sistema de archivos raíz en solo lectura; `/tmp` es un volumen `emptyDir`. Requests de 100m de CPU y 512Mi de memoria, límites de 1 CPU y 512Mi. Sondas de readiness y liveness sobre `/actuator/health/readiness` y `/actuator/health/liveness` |
 | Service `products-api` | ClusterIP en el puerto 8080 (`http`) |
 | HTTPRoute `products-api-route` | Enlaza el prefijo `/api/products` del Gateway `ingress-public` con el Service |
 
